@@ -71,6 +71,11 @@ local NewTextField = NewPage.TextField({
   -> Menu <table>
 })
 
+Material.NewNotification({
+   Title <string[any]>
+   Text <string[any]>
+   Callback <function(value)>
+})
 -- Custom Functions
                
 <void> NewButton:SetText(<string[any]>)
