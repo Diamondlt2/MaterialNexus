@@ -1,3 +1,17 @@
+--[[
+    MaterialNexus - MaterialLua Fork
+    Implementations:
+        Added Notification System from the Venyx UI Library
+    
+    Credits:
+    aKinlei - for the UI Library
+    Denosaur - for the Venyx Notification System
+
+    Note: I was too lazy to implement some parts of the venyx ui theme to the
+    MaterialLua themes. This fork will be updated for performance.
+]]
+
+
 local Player = game.Players.LocalPlayer
 local Mouse = Player:GetMouse()
 
@@ -7,6 +21,165 @@ local RunService = game:GetService("RunService")
 local InputService = game:GetService("UserInputService")
 local CoreGuiService = game:GetService("CoreGui")
 local ContentService = game:GetService("ContentProvider")
+
+local utility = {}
+function utility:Tween(instance, properties, duration, ...)
+    tween:Create(instance, tweeninfo(duration, ...), properties):Play()
+end
+
+function utility:Wait()
+    run.RenderStepped:Wait()
+    return true
+end
+
+function utility:Find(table, value) -- table.find doesn't work for dictionaries
+    for i, v in  pairs(table) do
+        if v == value then
+            return i
+        end
+    end
+end
+
+function utility:Sort(pattern, values)
+    local new = {}
+    pattern = pattern:lower()
+    
+    if pattern == "" then
+        return values
+    end
+    
+    for i, value in pairs(values) do
+        if tostring(value):lower():find(pattern) then
+            table.insert(new, value)
+        end
+    end
+    
+    return new
+end
+
+function utility:Pop(object, shrink)
+    local clone = object:Clone()
+    
+    clone.AnchorPoint = Vector2.new(0.5, 0.5)
+    clone.Size = clone.Size - UDim2.new(0, shrink, 0, shrink)
+    clone.Position = UDim2.new(0.5, 0, 0.5, 0)
+    
+    clone.Parent = object
+    clone:ClearAllChildren()
+    
+    object.ImageTransparency = 1
+    utility:Tween(clone, {Size = object.Size}, 0.2)
+    
+    spawn(function()
+        wait(0.2)
+    
+        object.ImageTransparency = 0
+        clone:Destroy()
+    end)
+    
+    return clone
+end
+
+function utility:InitializeKeybind()
+    self.keybinds = {}
+    self.ended = {}
+    
+    input.InputBegan:Connect(function(key)
+        if self.keybinds[key.KeyCode] then
+            for i, bind in pairs(self.keybinds[key.KeyCode]) do
+                bind()
+            end
+        end
+    end)
+    
+    input.InputEnded:Connect(function(key)
+        if key.UserInputType == Enum.UserInputType.MouseButton1 then
+            for i, callback in pairs(self.ended) do
+                callback()
+            end
+        end
+    end)
+end
+
+function utility:BindToKey(key, callback)
+     
+    self.keybinds[key] = self.keybinds[key] or {}
+    
+    table.insert(self.keybinds[key], callback)
+    
+    return {
+        UnBind = function()
+            for i, bind in pairs(self.keybinds[key]) do
+                if bind == callback then
+                    table.remove(self.keybinds[key], i)
+                end
+            end
+        end
+    }
+end
+
+function utility:KeyPressed() -- yield until next key is pressed
+    local key = input.InputBegan:Wait()
+    
+    while key.UserInputType ~= Enum.UserInputType.Keyboard	 do
+        key = input.InputBegan:Wait()
+    end
+    
+    wait() -- overlapping connection
+    
+    return key
+end
+
+function utility:DraggingEnabled(frame, parent)
+
+    parent = parent or frame
+    
+    -- stolen from wally or kiriot, kek
+    local dragging = false
+    local dragInput, mousePos, framePos
+
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            mousePos = input.Position
+            framePos = parent.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+
+    input.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - mousePos
+            parent.Position  = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
+        end
+    end)
+
+end
+
+function utility:DraggingEnded(callback)
+    table.insert(self.ended, callback)
+end
+
+end
+local themes = {
+	Background = Color3.fromRGB(24, 24, 24), 
+	Glow = Color3.fromRGB(0, 0, 0), 
+	Accent = Color3.fromRGB(10, 10, 10), 
+	LightContrast = Color3.fromRGB(20, 20, 20), 
+	DarkContrast = Color3.fromRGB(14, 14, 14),  
+	TextColor = Color3.fromRGB(255, 255, 255)
+}
 
 local Themes = {
 	Light = {
@@ -602,7 +775,170 @@ function CreateNewButton(ButtonConfig, Parent)
 end
 
 local TargetParent = RunService:IsStudio() and Player.PlayerGui or CoreGuiService
+function Material.NewNotification(Config)
+    if self.activeNotification then
+        self.activeNotification = self.activeNotification()
+    end
+    local title = Config.Title or 'MaterialLua'
+    local text = Config.Text
+    local callback = Config.Callback
+    local theme = Config.Theme or 'Light'
 
+    local NotificationsHandler = Objects.new('ScreenGui')
+    NotificationsHandler.Parent = game.CoreGui
+
+    local MainImage = Instance.new('ImageLabel')
+    MainImage.Name = 'Notification'
+    MainImage.Parent = NotificationsHandler
+    MainImage.Size = UDim2.new(0, 200, 0, 60)
+    MainImage.BackgroundTranparency = 1
+    MainImage.Image = "rbxassetid://5028857472"
+    MainImage.ImageColor3 = Themes[tostring(Config.Theme)].MainFrame or Themes.Light
+    MainImage.ScaleType =  Enum.ScaleType.Slice
+    MainImage.SliceCenter =  Rect.new(4, 4, 296, 296)
+    MainImage.ZIndex = 3
+    MainImage.ClipDescendants = true
+
+    local Flash = Instance.new('ImageLabel')
+    Flash.Name = 'Flash'
+    Flash.Parent = MainImage
+    Flash.BackgroundTransparency = 1
+    Flash.Size = UDim2.new(1, 0, 1, 0)
+    Flash.Image = 'rbxassetid://464114955'
+    Flash.ImageColor3 = (Config.Theme = 'Dark' and Color3.fromRGB(255, 255, 255) end), (Config.Theme ='Light' and Color3.fromRGB(124,37,255))
+    Flash.ZIndex = 5
+    Flash.Parent = MainImage
+
+    local Glow = Instance.new('ImageLabel')
+    Glow.BackgroundTransparency = 1,
+	Glow.Position = UDim2.new(0, -15, 0, -15),
+	Glow.Size = UDim2.new(1, 30, 1, 30),
+    Glow.ZIndex = 2,
+	Glow.Image = "rbxassetid://5028857084",
+	Glow.ImageColor3 = themes.Glow,
+	Glow.ScaleType = Enum.ScaleType.Slice,
+	Glow.SliceCenter = Rect.new(24, 24, 276, 276)
+    Glow.Parent = MainImage
+
+    local Title = Instance.new('TextLabel')
+    Title.Name = "Title",
+	Title.BackgroundTransparency = 1,
+	Title.Position = UDim2.new(0, 10, 0, 8),
+	Title.Size = UDim2.new(1, -40, 0, 16),
+	Title.ZIndex = 4,
+	Title.Font = Enum.Font.GothamSemibold,
+	Title.TextColor3 = themes.TextColor,
+	Title.TextSize = 14.000,
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = MainImage
+
+    local Text = Instance.new('TextLabel')
+    Text.Name = "Text",
+	Text.BackgroundTransparency = 1,
+	Text.Position = UDim2.new(0, 10, 1, -24),
+	Text.Size = UDim2.new(1, -40, 0, 16),
+	Text.ZIndex = 4,
+	Text.Font = Enum.Font.Gotham,
+	Text.TextColor3 = themes.TextColor,
+	Text.TextSize = 12.000,
+	Text.TextXAlignment = Enum.TextXAlignment.Left
+    Text.Parent = MainImage
+
+    local Accept = Instance.new('ImageButton')
+    Accept.Parent = MainImage
+    Accept.BackgroundTransparency = 1,
+	Accept.Position = UDim2.new(1, -26, 0, 8),
+	Accept.Size = UDim2.new(0, 16, 0, 16),
+    Accept.Image = "rbxassetid://5012538259",
+	Accept.ImageColor3 = themes.TextColor,
+    Accept.ZIndex = 4
+    
+    local Decline = Instance.new('ImageButton')
+    Decline.Parent = MainImage
+    Decline.Name = "Decline",
+	Decline.BackgroundTransparency = 1,
+	Decline.Position = UDim2.new(1, -26, 1, -24),
+	Decline.Size = UDim2.new(0, 16, 0, 16),
+	Decline.Image = "rbxassetid://5012538583",
+	Decline.ImageColor3 = themes.TextColor,
+    Decline.ZIndex = 4
+    
+    Title = title
+    Text = text
+
+    local padding = 10
+		local textSize = game:GetService("TextService"):GetTextSize(text, 12, Enum.Font.Gotham, Vector2.new(math.huge, 16))
+		
+		MainImage.Position = Material.lastNotification or UDim2.new(0, padding, 1, -(MainImage.AbsoluteSize.Y + padding))
+		MainImage.Size = UDim2.new(0, 0, 0, 60)
+		
+		utility:Tween(MainImage, {Size = UDim2.new(0, textSize.X + 70, 0, 60)}, 0.2)
+		wait(0.2)
+		
+		MainImage.ClipsDescendants = false
+		utility:Tween(MainImage.Flash, {
+			Size = UDim2.new(0, 0, 0, 60),
+			Position = UDim2.new(1, 0, 0, 0)
+		}, 0.2)
+		
+		-- callbacks
+		local active = true
+		local close = function()
+		
+			if not active then
+				return
+			end
+			
+			active = false
+			MainImage.ClipsDescendants = true
+			
+			Material.lastNotification = MainImage.Position
+			MainImage.Flash.Position = UDim2.new(0, 0, 0, 0)
+			utility:Tween(MainImage.Flash, {Size = UDim2.new(1, 0, 1, 0)}, 0.2)
+			
+			wait(0.2)
+			utility:Tween(MainImage, {
+				Size = UDim2.new(0, 0, 0, 60),
+				Position = MainImage.Position + UDim2.new(0, textSize.X + 70, 0, 0)
+			}, 0.2)
+			
+			wait(0.2)
+			MainImage:Destroy()
+		end
+		
+		self.activeNotification = close
+		
+		MainImage.Accept.MouseButton1Click:Connect(function()
+		
+			if not active then 
+				return
+			end
+			
+			if Config.Callback then
+				callback(true)
+			end
+			
+			close()
+		end)
+		
+		MainImage.Decline.MouseButton1Click:Connect(function()
+		
+			if not active then 
+				return
+			end
+			
+			if Config.Callback then
+				callback(false)
+			end
+			
+			close()
+		end)
+	end
+	
+
+
+
+end
 function Material.Load(Config)
 	local Style = (Config.Style and math.clamp(Config.Style, 1, 3)) or 1
 	local Title = Config.Title or "MaterialLua"
