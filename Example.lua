@@ -1,4 +1,4 @@
-local Material = loadstring(game:HttpGet("https://raw.githubusercontent.com/Kinlei/MaterialLua/master/Module.lua"))()
+local Material = loadstring(game:HttpGet("https://raw.githubusercontent.com/BytecodexDev/MaterialNexus/master/Module.lua"))()
 
 local X = Material.Load({
 	Title = "ChibuHub",
@@ -131,6 +131,14 @@ local G = Y.ColorPicker({
 			})
 		end
 	}
+})
+
+Material.NewNotification({
+   Title = "Title",
+   Text = "Text",
+   Callback = function()
+			print("hello"
+			end
 })
 
 local H = Y.TextField({
